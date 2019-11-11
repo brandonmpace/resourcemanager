@@ -105,3 +105,6 @@ venv.bak/
 
 # PyCharm
 .idea/
+
+# example.py output file
+example.txt
