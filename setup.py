@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="resourcemanager",
-    version="0.0.1",
+    version="0.0.2",
     author="Brandon M. Pace",
     author_email="brandonmpace@gmail.com",
     description="A resource manager for Python programs",
@@ -18,7 +18,7 @@ setuptools.setup(
     url="https://github.com/brandonmpace/resourcemanager",
     packages=setuptools.find_packages(),
     classifiers=[
-        "Development Status :: 1 - Planning",
+        "Development Status :: 2 - Pre-Alpha",
         "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3"
