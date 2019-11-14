@@ -22,6 +22,7 @@
 import datetime
 import logging
 import os
+import threading
 
 
 from typing import Callable, Optional, Union
@@ -69,6 +70,7 @@ class FileResource(object):
         self.last_update: datetime.datetime = NOT_UPDATED
         self.loaded = False
         self.updated = False
+        self._lock = threading.RLock()
 
     def can_read(self) -> bool:
         return self.reader is not None
@@ -86,44 +88,46 @@ class FileResource(object):
         return os.path.isfile(self.file_path)
 
     def load(self):
-        error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
-        if self.exists() or self.update():
-            if self.reader:
-                data = self.reader(self.file_path)
-                if self.validate(data=data):
-                    self.loader(data)
-                    self.loaded = True
-                elif (self.last_update is NOT_UPDATED) and self.update():
+        with self._lock:
+            error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
+            if self.exists() or self.update():
+                if self.reader:
                     data = self.reader(self.file_path)
                     if self.validate(data=data):
                         self.loader(data)
                         self.loaded = True
+                    elif (self.last_update is NOT_UPDATED) and self.update():
+                        data = self.reader(self.file_path)
+                        if self.validate(data=data):
+                            self.loader(data)
+                            self.loaded = True
+                        else:
+                            raise ValueError(error_message)
                     else:
                         raise ValueError(error_message)
                 else:
-                    raise ValueError(error_message)
-            else:
-                if self.validate():
-                    self.loader(self.file_path)
-                    self.loaded = True
-                elif (self.last_update is NOT_UPDATED) and self.update():
                     if self.validate():
                         self.loader(self.file_path)
                         self.loaded = True
+                    elif (self.last_update is NOT_UPDATED) and self.update():
+                        if self.validate():
+                            self.loader(self.file_path)
+                            self.loaded = True
+                        else:
+                            raise ValueError(error_message)
                     else:
                         raise ValueError(error_message)
-                else:
-                    raise ValueError(error_message)
-        else:
-            raise FileNotFoundError(error_message)
+            else:
+                raise FileNotFoundError(error_message)
 
     def save(self, data):
-        if self.reader and (self.validate(data=data) is False):
-            return False
-        if self.writer:
-            return self.writer(self.file_path, data)
-        else:
-            return save_file(self.file_path, data, binary=self.binary)
+        with self._lock:
+            if self.reader and (self.validate(data=data) is False):
+                return False
+            if self.writer:
+                return self.writer(self.file_path, data)
+            else:
+                return save_file(self.file_path, data, binary=self.binary)
 
     def set_last_update(self, last_update: Union[datetime.datetime, str]):
         if isinstance(last_update, str):
@@ -137,13 +141,14 @@ class FileResource(object):
             raise ValueError(f"Invalid type for last_update: {type(last_update)}")
 
     def update(self) -> bool:
-        if self.updater:
-            data = self.updater()
-            if self.save(data):
-                self.set_last_update(datetime.datetime.utcnow())
-                self.updated = True
-                return True
-        return False
+        with self._lock:
+            if self.updater:
+                data = self.updater()
+                if self.save(data):
+                    self.set_last_update(datetime.datetime.utcnow())
+                    self.updated = True
+                    return True
+            return False
 
     def validate(self, data=None) -> bool:
         if self.validator:
@@ -202,25 +207,26 @@ class JsonResource(FileResource):
         )
 
     def load(self):
-        error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
-        if self.exists() or self.update():
-            data = self.reader(self.file_path)
-            if self.validate(data=data):
-                if "last_update" in data:
-                    self.set_last_update(data["last_update"])
-                self.loader(**data)
-                self.loaded = True
-            elif self.update():
+        with self._lock:
+            error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
+            if self.exists() or self.update():
                 data = self.reader(self.file_path)
                 if self.validate(data=data):
+                    if "last_update" in data:
+                        self.set_last_update(data["last_update"])
                     self.loader(**data)
                     self.loaded = True
+                elif self.update():
+                    data = self.reader(self.file_path)
+                    if self.validate(data=data):
+                        self.loader(**data)
+                        self.loaded = True
+                    else:
+                        raise ValueError(error_message)
                 else:
                     raise ValueError(error_message)
             else:
-                raise ValueError(error_message)
-        else:
-            raise FileNotFoundError(error_message)
+                raise FileNotFoundError(error_message)
 
     def validate(self, data: dict = None) -> bool:
         if data is None:
@@ -232,13 +238,14 @@ class JsonResource(FileResource):
         return return_value
 
     def update(self) -> bool:
-        if self.updater:
-            data = self.updater(self.last_update)
-            if self.save(data):
-                if "last_update" in data:
-                    self.set_last_update(data["last_update"])
-                else:
-                    self.set_last_update(datetime.datetime.utcnow())
-                self.updated = True
-                return True
-        return False
+        with self._lock:
+            if self.updater:
+                data = self.updater(self.last_update)
+                if self.save(data):
+                    if "last_update" in data:
+                        self.set_last_update(data["last_update"])
+                    else:
+                        self.set_last_update(datetime.datetime.utcnow())
+                    self.updated = True
+                    return True
+            return False
