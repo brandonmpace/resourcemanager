@@ -24,7 +24,7 @@ import json
 from typing import Dict, List, Union
 
 
-def read_file(file_path: str, encoding: str = "UTF-8", errors: str = "strict", binary: bool = False):
+def read_file(file_path: str, encoding: str = "UTF-8", errors: str = "strict", binary: bool = False) -> Union[bytes, str]:
     if binary:
         with open(file_path, mode="rb") as file_handle:
             return file_handle.read()
@@ -33,7 +33,7 @@ def read_file(file_path: str, encoding: str = "UTF-8", errors: str = "strict", b
             return file_handle.read()
 
 
-def save_file(file_path: str, data, encoding: str = "UTF-8", errors: str = "strict", binary: bool = False):
+def save_file(file_path: str, data, encoding: str = "UTF-8", errors: str = "strict", binary: bool = False) -> bool:
     if binary:
         encoding = None
         errors = None

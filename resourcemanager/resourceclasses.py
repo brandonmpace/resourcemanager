@@ -167,7 +167,7 @@ class JsonResource(FileResource):
         :param loader: Callable that accepts keyword args that are keys from your JSON (**kwargs is also recommended)
         :param reader: Callable that accepts file path and returns a dict representing JSON
         :param writer: Callable that accepts file path and JSON dict to save to disk, then returns True on success
-        :param updater: Callable that fetches an updated dict representing JSON to save to disk
+        :param updater: Callable that fetches an updated dict representing JSON to save to disk, last_update datetime is passed to it
         :param validator: Callable that accepts a dict representing JSON and returns True when valid
 
         :todo: Handle differential updates, where server only sends content created since last_update timestamp
@@ -186,18 +186,23 @@ class JsonResource(FileResource):
         )
 
     def load(self):
+        error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
         if self.exists() or self.update():
             data = self.reader(self.file_path)
-            if ("last_update" in data) and (self.last_update is NOT_UPDATED):
-                self.set_last_update(data["last_update"])
             if self.validate(data=data):
+                if "last_update" in data:
+                    self.set_last_update(data["last_update"])
                 self.loader(**data)
-            elif (self.last_update is NOT_UPDATED) and self.update():
+            elif self.update():
                 data = self.reader(self.file_path)
                 if self.validate(data=data):
                     self.loader(**data)
+                else:
+                    raise ValueError(error_message)
+            else:
+                raise ValueError(error_message)
         else:
-            raise FileNotFoundError(f"Unable to load resource '{self.name}' from '{self.file_path}'")
+            raise FileNotFoundError(error_message)
 
     def validate(self, data: dict = None) -> bool:
         if data is None:
@@ -210,11 +215,11 @@ class JsonResource(FileResource):
 
     def update(self) -> bool:
         if self.updater:
-            data = self.updater()
+            data = self.updater(self.last_update)
             if self.save(data):
                 if "last_update" in data:
                     self.set_last_update(data["last_update"])
                 else:
-                    self.last_update = datetime.datetime.utcnow()
+                    self.set_last_update(datetime.datetime.utcnow())
                 return True
         return False
