@@ -67,6 +67,8 @@ class FileResource(object):
         self.binary: bool = binary
 
         self.last_update: datetime.datetime = NOT_UPDATED
+        self.loaded = False
+        self.updated = False
 
     def can_read(self) -> bool:
         return self.reader is not None
@@ -84,23 +86,36 @@ class FileResource(object):
         return os.path.isfile(self.file_path)
 
     def load(self):
+        error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
         if self.exists() or self.update():
             if self.reader:
                 data = self.reader(self.file_path)
                 if self.validate(data=data):
                     self.loader(data)
+                    self.loaded = True
                 elif (self.last_update is NOT_UPDATED) and self.update():
                     data = self.reader(self.file_path)
                     if self.validate(data=data):
                         self.loader(data)
+                        self.loaded = True
+                    else:
+                        raise ValueError(error_message)
+                else:
+                    raise ValueError(error_message)
             else:
                 if self.validate():
                     self.loader(self.file_path)
+                    self.loaded = True
                 elif (self.last_update is NOT_UPDATED) and self.update():
                     if self.validate():
                         self.loader(self.file_path)
+                        self.loaded = True
+                    else:
+                        raise ValueError(error_message)
+                else:
+                    raise ValueError(error_message)
         else:
-            raise FileNotFoundError(f"Unable to load resource '{self.name}' from '{self.file_path}'")
+            raise FileNotFoundError(error_message)
 
     def save(self, data):
         if self.reader and (self.validate(data=data) is False):
@@ -126,6 +141,7 @@ class FileResource(object):
             data = self.updater()
             if self.save(data):
                 self.set_last_update(datetime.datetime.utcnow())
+                self.updated = True
                 return True
         return False
 
@@ -193,10 +209,12 @@ class JsonResource(FileResource):
                 if "last_update" in data:
                     self.set_last_update(data["last_update"])
                 self.loader(**data)
+                self.loaded = True
             elif self.update():
                 data = self.reader(self.file_path)
                 if self.validate(data=data):
                     self.loader(**data)
+                    self.loaded = True
                 else:
                     raise ValueError(error_message)
             else:
@@ -221,5 +239,6 @@ class JsonResource(FileResource):
                     self.set_last_update(data["last_update"])
                 else:
                     self.set_last_update(datetime.datetime.utcnow())
+                self.updated = True
                 return True
         return False
