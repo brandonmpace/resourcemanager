@@ -3,9 +3,11 @@
 import datetime
 import functools
 import resourcemanager
+import time
 
 
 example_global = ""
+example_json_item = ""
 
 
 def fetch_file():
@@ -27,9 +29,9 @@ def example_loader(input_data: str):
 
 
 def example_json_loader(key: str, other: str, **kwargs):
-    global example_global
+    global example_json_item
     print(f"example_json_loader: Got: key '{key}', other '{other}', kwargs '{kwargs}'")
-    example_global = key
+    example_json_item = key
 
 
 def example_validator(file_path: str) -> bool:
@@ -49,9 +51,26 @@ example_resource = resourcemanager.FileResource(
     "example file", "example.txt", example_loader, updater=fetch_file, validator=example_validator
 )
 
+example_json_resource = resourcemanager.JsonResource(
+    "example JSON file", "example.json", example_json_loader, updater=fetch_json, validator=example_json_validator
+)
+
 print(f"Example file exists: {example_resource.exists()}")
-example_resource.load()
-print(f"Example global after load: '{example_global}'")
+print(f"Example JSON file exists: {example_json_resource.exists()}")
+resourcemanager.register_resource(example_resource)
+resourcemanager.register_resource(example_json_resource)
+print(f"{resourcemanager.loaded_resource_percentage()}% loaded")
+time.sleep(0.05)
+print(f"{resourcemanager.loaded_resource_percentage()}% loaded")
+
+if example_resource.loaded:
+    print(f"Example global after load: '{example_global}'")
+else:
+    print(f"resource still loading")
+time.sleep(1)
+
+print(f"Example JSON global after JSON load: '{example_json_item}'")
+
 
 ascii_reader = functools.partial(resourcemanager.read_file, encoding='ascii', errors='replace')
 example_resource = resourcemanager.FileResource(
@@ -59,9 +78,3 @@ example_resource = resourcemanager.FileResource(
 )
 example_resource.load()
 print(f"Example global after second load: '{example_global}'")
-
-example_resource = resourcemanager.JsonResource(
-    "example file", "example.txt", example_json_loader, updater=fetch_json, validator=example_json_validator
-)
-example_resource.load()
-print(f"Example global after JSON load: '{example_global}'")
