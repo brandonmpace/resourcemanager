@@ -31,7 +31,7 @@ import logging
 
 from .handlers import read_file, save_file, read_json, save_json
 from .manager import count_of_loaded_resources, count_of_total_resources, loaded_resource_percentage
-from .manager import get_resource_instance, register_resource
+from .manager import get_resource_instance, register_resource, set_max_workers
 from .resourceclasses import FileResource, JsonResource
 
 

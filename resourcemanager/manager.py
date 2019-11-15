@@ -19,6 +19,7 @@
 
 """Module for the actual management of resources"""
 
+import concurrent.futures
 import logging
 import queue
 import threading
@@ -38,6 +39,8 @@ _pending_queue = queue.Queue()  # Queue of Optional[Tuple[FileResource, bool, bo
 _queue_timeout = 1
 _resources_lock = threading.RLock()
 _resources: Dict[str, FileResource] = {}
+_thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_thread_pool_max_workers: Optional[int] = None
 
 
 def get_resource_instance(name: str) -> Optional[FileResource]:
@@ -82,6 +85,23 @@ def loaded_resource_percentage() -> float:
             return (loaded_resource_count / total_resource_count) * 100
 
 
+def set_max_workers(max_workers: int) -> bool:
+    """
+    Change the number of workers for the loader/updater thread pool. Must be called before register_resource!
+    :param max_workers: int number of threads to use
+    :return: bool True if successful
+    """
+    global _thread_pool_max_workers
+    with _manager_lock:
+        if isinstance(max_workers, int) is False:
+            raise TypeError("max_workers should be an int value")
+        if _thread_pool is None:
+            _thread_pool_max_workers = max_workers
+            return True
+        else:
+            return False
+
+
 def _handle_pending_queue():
     while True:
         try:
@@ -89,24 +109,18 @@ def _handle_pending_queue():
                 block=True, timeout=_queue_timeout
             )
             if pending_item is None:
+                _pending_queue.task_done()
                 break
             resource = pending_item[0]
             load_before_update = pending_item[1]
             update = pending_item[2]
 
-            should_load_now = (update and load_before_update) or (update is False and load_before_update is False)
-            if should_load_now:
-                try:
-                    resource.load()
-                except Exception:
-                    logger.exception(f"Failed to load resource '{resource.name}'")
-
-            # update the resource if asked to and it wasn't updated during load()
-            if update and (resource.updated is False):
-                try:
-                    resource.update()
-                except Exception:
-                    logger.exception(f"Failed to update resource '{resource.name}'")
+            submission_result = _thread_pool.submit(_load_resource, resource, load_before_update, update)
+            _pending_queue.task_done()
+            if submission_result.done() and (submission_result.cancelled() is False):
+                found_exception = submission_result.exception()
+                if found_exception:
+                    logger.error(f"Exception when submitting resource for load: '{found_exception}'")
 
         except queue.Empty:  # timeout reached
             if _pending_queue.empty():
@@ -116,15 +130,40 @@ def _handle_pending_queue():
             logger.exception("Encountered exception while handling pending queue")
 
 
+def _load_resource(resource: FileResource, load_before_update: bool, update: bool):
+    logger.debug(f"about to load resource '{resource.name}'")
+    should_load_now = (update and load_before_update) or (update is False and load_before_update is False)
+    if should_load_now:
+        try:
+            resource.load()
+        except Exception:
+            logger.exception(f"Failed to load resource '{resource.name}'")
+
+    # update the resource if asked to and it wasn't updated during load()
+    if update and (resource.updated is False):
+        try:
+            resource.update()
+        except Exception:
+            logger.exception(f"Failed to update resource '{resource.name}'")
+    logger.debug(f"end handling resource '{resource.name}'")
+
+
 def _run_manager():
     global _manager_thread
     global _manager_thread_count
+    global _thread_pool
     with _manager_lock:
+        if _thread_pool is None:
+            _thread_pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=_thread_pool_max_workers, thread_name_prefix="res_ldr"
+            )
+            logger.debug("Started thread pool for resource loaders and updaters")
         if _manager_thread and _manager_thread.is_alive():
-            logger.debug("Not starting new manager thread as one exists and is alive")
+            logger.debug("Not starting new resource manager thread as one exists and is alive")
         else:
             _manager_thread_count += 1
             _manager_thread = threading.Thread(
                 target=_handle_pending_queue, name=f"res_mgr{_manager_thread_count}", daemon=True
             )
             _manager_thread.start()
+            logger.debug("Started new resource manager thread")
