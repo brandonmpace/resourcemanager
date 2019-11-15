@@ -29,16 +29,18 @@ def fetch_json(last_update: datetime.datetime = None):
     return test_data
 
 
-def example_loader(input_data: str):
+def example_loader(input_data: str) -> bool:
     global example_global
     print(f"example_loader: Got: '{input_data}'")
     example_global = input_data
+    return True
 
 
-def example_json_loader(key: str, other: str, **kwargs):
+def example_json_loader(key: str, other: str, **kwargs) -> bool:
     global example_json_item
     print(f"example_json_loader: Got: key '{key}', other '{other}', kwargs '{kwargs}'")
     example_json_item = key
+    return True
 
 
 def example_validator(file_path: str) -> bool:

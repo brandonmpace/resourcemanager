@@ -49,6 +49,9 @@ class FileResource(object):
         """
         Initialize a FileResource instance
         Note: reader and updater should produce the same return value (e.g. str or bytes)
+        Note: loader, writer and validator should return bool True on success
+
+        If a reader is provided, duplicate loads will be avoided automatically when the data is unchanged.
 
         :param name: str name identifier for this resource
         :param file_path: str path to file
@@ -67,6 +70,7 @@ class FileResource(object):
         self.validator: Optional[Callable] = validator
         self.binary: bool = binary
 
+        self.data = None
         self.last_update: datetime.datetime = NOT_UPDATED
         self.loaded = False
         self.updated = False
@@ -93,25 +97,25 @@ class FileResource(object):
             if self.exists() or self.update():
                 if self.reader:
                     data = self.reader(self.file_path)
-                    if self.validate(data=data):
-                        self.loader(data)
+                    if self.loaded and (self.data == data):
+                        logger.debug(f"Skipping redundant load of resource '{self.name}' - data is unchanged")
+                    if self.validate(data=data) and self.loader(data):
+                        self.data = data
                         self.loaded = True
                     elif (self.last_update is NOT_UPDATED) and self.update():
                         data = self.reader(self.file_path)
-                        if self.validate(data=data):
-                            self.loader(data)
+                        if self.validate(data=data) and self.loader(data):
+                            self.data = data
                             self.loaded = True
                         else:
                             raise ValueError(error_message)
                     else:
                         raise ValueError(error_message)
                 else:
-                    if self.validate():
-                        self.loader(self.file_path)
+                    if self.validate() and self.loader(self.file_path):
                         self.loaded = True
                     elif (self.last_update is NOT_UPDATED) and self.update():
-                        if self.validate():
-                            self.loader(self.file_path)
+                        if self.validate() and self.loader(self.file_path):
                             self.loaded = True
                         else:
                             raise ValueError(error_message)
@@ -120,7 +124,7 @@ class FileResource(object):
             else:
                 raise FileNotFoundError(error_message)
 
-    def save(self, data):
+    def save(self, data) -> bool:
         with self._lock:
             if self.reader and (self.validate(data=data) is False):
                 return False
@@ -163,6 +167,7 @@ class FileResource(object):
                 logger.error(f"resource '{self.name}' from '{self.file_path}' failed validation")
             return return_value
         else:
+            logger.debug(f"Resource '{self.name}' validation returning default")
             # without a validator we have no way to say the data is bad, so we return True
             return True
 
@@ -211,15 +216,20 @@ class JsonResource(FileResource):
             error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
             if self.exists() or self.update():
                 data = self.reader(self.file_path)
+                if self.loaded and (self.data == data):
+                    logger.debug(f"Skipping redundant load of resource '{self.name}' - data is unchanged")
                 if self.validate(data=data):
                     if "last_update" in data:
                         self.set_last_update(data["last_update"])
-                    self.loader(**data)
-                    self.loaded = True
+                    if self.loader(**data):
+                        self.data = data
+                        self.loaded = True
+                    else:
+                        raise ValueError(error_message)
                 elif self.update():
                     data = self.reader(self.file_path)
-                    if self.validate(data=data):
-                        self.loader(**data)
+                    if self.validate(data=data) and self.loader(**data):
+                        self.data = data
                         self.loaded = True
                     else:
                         raise ValueError(error_message)

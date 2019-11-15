@@ -143,6 +143,8 @@ def _load_resource(resource: FileResource, load_before_update: bool, update: boo
     if update and (resource.updated is False):
         try:
             resource.update()
+            logger.debug(f"Updated resource '{resource.name}', loading new data")
+            resource.load()
         except Exception:
             logger.exception(f"Failed to update resource '{resource.name}'")
     logger.debug(f"end handling resource '{resource.name}'")
