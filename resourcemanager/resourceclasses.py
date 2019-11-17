@@ -76,6 +76,9 @@ class FileResource(object):
         self.updated = False
         self._lock = threading.RLock()
 
+    def __repr__(self):
+        return "%s(%r, %r, ...)" % (self.__class__.__name__, self.name, self.file_path)
+
     def can_read(self) -> bool:
         return self.reader is not None
 
