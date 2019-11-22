@@ -75,19 +75,18 @@ print(f"{resourcemanager.loaded_resource_percentage()}% loaded")
 time.sleep(0.05)
 print(f"{resourcemanager.loaded_resource_percentage()}% loaded")
 
-if example_resource.loaded:
+if example_resource.wait_for_load(1.0):
     print(f"Example global after load: '{example_global}'")
 else:
     print(f"resource still loading")
-time.sleep(1)
-
+example_json_resource.wait_for_load(1.0)
 print(f"Example JSON global after JSON load: '{example_json_item}'")
 
 
 # You can make your own functions, and functools.partial can help if using functions that you don't control
 ascii_reader = functools.partial(resourcemanager.read_file, encoding='ascii', errors='replace')
-example_resource = resourcemanager.FileResource(
+other_example_resource = resourcemanager.FileResource(
     "example file", "example.txt", example_loader, reader=ascii_reader, updater=fetch_file, validator=example_text_validator
 )
-example_resource.load()
+other_example_resource.load()
 print(f"Example global after second load: '{example_global}'")
