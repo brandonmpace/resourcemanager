@@ -75,6 +75,7 @@ class FileResource(object):
         self.loaded = False
         self.updated = False
         self._lock = threading.RLock()
+        self._load_event = threading.Event()
 
     def __repr__(self):
         return "%s(%r, %r, ...)" % (self.__class__.__name__, self.name, self.file_path)
@@ -97,6 +98,8 @@ class FileResource(object):
     def load(self):
         with self._lock:
             error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
+            if self._load_event.is_set():
+                self._load_event.clear()
             if self.exists() or self.update():
                 if self.reader:
                     data = self.reader(self.file_path)
@@ -126,6 +129,7 @@ class FileResource(object):
                         raise ValueError(error_message)
             else:
                 raise FileNotFoundError(error_message)
+            self._load_event.set()
 
     def save(self, data) -> bool:
         with self._lock:
@@ -174,6 +178,17 @@ class FileResource(object):
             # without a validator we have no way to say the data is bad, so we return True
             return True
 
+    def wait_for_load(self, timeout: Optional[float] = None) -> bool:
+        """
+        Block the calling thread until the resource is loaded, but return after timeout if provided.
+        Returns True if the resource loaded successfully.
+        The return is False if the timeout is reached or the load failed.
+        """
+        if self._load_event.wait(timeout=timeout):
+            return self.loaded
+        else:
+            return False
+
 
 class JsonResource(FileResource):
     """Object that represents a loadable resource"""
@@ -217,6 +232,8 @@ class JsonResource(FileResource):
     def load(self):
         with self._lock:
             error_message = f"Unable to load resource '{self.name}' from '{self.file_path}'"
+            if self._load_event.is_set():
+                self._load_event.clear()
             if self.exists() or self.update():
                 data = self.reader(self.file_path)
                 if self.loaded and (self.data == data):
@@ -240,6 +257,7 @@ class JsonResource(FileResource):
                     raise ValueError(error_message)
             else:
                 raise FileNotFoundError(error_message)
+            self._load_event.set()
 
     def validate(self, data: dict = None) -> bool:
         if data is None:
